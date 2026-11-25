@@ -1,0 +1,9 @@
+.cc-category-row { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1rem; }
+@media (max-width: 1199.98px) { .cc-category-row { grid-template-columns: repeat(4, 1fr); } }
+@media (max-width: 767.98px) { .cc-category-row { grid-template-columns: repeat(3, 1fr); gap: 0.75rem; } }
+@media (max-width: 479.98px) { .cc-category-row { grid-template-columns: repeat(2, 1fr); } }
+
+.cc-cta-banner { display: flex; align-items: center; justify-content: space-between; gap: 1.5rem; flex-wrap: wrap; padding: 2.5rem; border-radius: 24px; color: #dbeafe; background: linear-gradient(120deg, #2563eb 0%, #1e3a8a 100%); box-shadow: 0 18px 40px rgba(37, 99, 235, 0.3); }
+.cc-cta-banner h2 { color: #fff; font-size: clamp(1.4rem, 2.5vw, 1.9rem); margin-bottom: 0.35rem; }
+.cc-cta-banner p { margin: 0; max-width: 560px; }
+@media (max-width: 575.98px) { .cc-cta-banner { padding: 1.75rem; } .cc-cta-banner .btn { width: 100%; } }

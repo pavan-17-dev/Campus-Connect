@@ -1,0 +1,5 @@
+.cc-wish-btn { width: 38px; height: 38px; border-radius: 50%; border: 0; background: rgba(255, 255, 255, 0.95); color: var(--cc-secondary); display: inline-flex; align-items: center; justify-content: center; font-size: 1.05rem; box-shadow: var(--cc-shadow-sm); transition: transform var(--cc-transition), color var(--cc-transition); }
+.cc-wish-btn:hover { transform: scale(1.08); color: var(--cc-danger); }
+.cc-wish-btn.is-active { color: var(--cc-danger); }
+.cc-wish-btn.is-active i { animation: cc-heart 0.3s ease; }
+@keyframes cc-heart { 50% { transform: scale(1.3); } }

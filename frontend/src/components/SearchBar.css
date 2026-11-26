@@ -1,0 +1,10 @@
+.cc-search { position: relative; display: flex; align-items: center; background: #fff; border: 1px solid var(--cc-border); border-radius: 14px; padding: 0.35rem; box-shadow: var(--cc-shadow-sm); transition: border-color var(--cc-transition), box-shadow var(--cc-transition); }
+.cc-search:focus-within { border-color: var(--cc-primary); box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12); }
+.cc-search-icon { position: absolute; left: 1rem; color: var(--cc-muted); }
+.cc-search-input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; padding: 0.55rem 0.75rem 0.55rem 2.3rem; font-size: 0.95rem; color: var(--cc-text); }
+.cc-search-select { border: 0; border-left: 1px solid var(--cc-border); background: transparent; padding: 0.4rem 0.75rem; color: var(--cc-secondary); font-size: 0.9rem; outline: 0; max-width: 170px; }
+.cc-search-btn { border-radius: 10px; white-space: nowrap; }
+.cc-search-lg { padding: 0.45rem; border-radius: 16px; }
+.cc-search-lg .cc-search-input { padding-top: 0.75rem; padding-bottom: 0.75rem; font-size: 1rem; }
+.cc-search-lg .cc-search-btn { padding: 0.7rem 1.4rem; }
+@media (max-width: 575.98px) { .cc-search-select { display: none; } }

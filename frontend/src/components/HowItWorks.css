@@ -1,0 +1,6 @@
+.cc-step { position: relative; height: 100%; padding: 2rem 1.75rem; border-radius: var(--cc-radius-lg); background: var(--cc-bg); border: 1px solid var(--cc-border); transition: transform var(--cc-transition), box-shadow var(--cc-transition); }
+.cc-step:hover { transform: translateY(-4px); box-shadow: var(--cc-shadow); background: #fff; }
+.cc-step-num { position: absolute; top: 1.25rem; right: 1.5rem; font-size: 3rem; font-weight: 800; color: var(--cc-accent); line-height: 1; }
+.cc-step-icon { width: 56px; height: 56px; border-radius: 14px; background: var(--cc-primary); color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 1.5rem; margin-bottom: 1.25rem; box-shadow: 0 8px 18px rgba(37, 99, 235, 0.3); }
+.cc-step h3 { font-size: 1.15rem; margin-bottom: 0.5rem; }
+.cc-step p { color: var(--cc-muted); margin: 0; }

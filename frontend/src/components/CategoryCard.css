@@ -1,0 +1,9 @@
+.cc-category-card { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 0.6rem; height: 100%; padding: 1.5rem 1rem; background: #fff; border: 1px solid var(--cc-border); border-radius: var(--cc-radius-lg); color: var(--cc-secondary); transition: transform var(--cc-transition), box-shadow var(--cc-transition), border-color var(--cc-transition); }
+.cc-category-card:hover { transform: translateY(-4px); box-shadow: var(--cc-shadow); border-color: color-mix(in srgb, var(--cat-color) 40%, white); color: var(--cc-secondary); }
+.cc-category-icon { width: 58px; height: 58px; border-radius: 16px; display: inline-flex; align-items: center; justify-content: center; font-size: 1.55rem; color: var(--cat-color); background: color-mix(in srgb, var(--cat-color) 12%, white); transition: all var(--cc-transition); }
+.cc-category-card:hover .cc-category-icon { background: var(--cat-color); color: #fff; }
+.cc-category-name { font-weight: 700; font-size: 0.95rem; line-height: 1.25; }
+.cc-category-desc { color: var(--cc-muted); font-size: 0.87rem; }
+.cc-category-count { font-size: 0.78rem; color: var(--cc-muted); font-weight: 500; }
+.cc-category-detailed { align-items: flex-start; text-align: left; padding: 1.5rem; }
+.cc-category-detailed .cc-category-name { font-size: 1.1rem; }

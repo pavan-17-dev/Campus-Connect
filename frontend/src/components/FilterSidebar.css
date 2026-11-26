@@ -1,0 +1,9 @@
+.cc-filters { background: #fff; border: 1px solid var(--cc-border); border-radius: var(--cc-radius-lg); padding: 1.25rem; }
+.cc-filters-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem; }
+.cc-filters-head h2 { font-size: 1.05rem; margin: 0; }
+.cc-filter-group { padding: 1rem 0; border-top: 1px solid var(--cc-border); }
+.cc-filter-group:first-of-type { border-top: 0; }
+.cc-filter-group h3 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--cc-muted); font-weight: 700; margin-bottom: 0.75rem; }
+.cc-filter-check { display: flex; align-items: center; gap: 0.6rem; padding: 0.3rem 0; cursor: pointer; font-size: 0.93rem; color: var(--cc-secondary); }
+.cc-filter-check .form-check-input { margin: 0; flex-shrink: 0; }
+.cc-filter-check small { margin-left: auto; color: var(--cc-muted); background: var(--cc-bg); border-radius: 999px; padding: 0 0.5rem; font-size: 0.75rem; }

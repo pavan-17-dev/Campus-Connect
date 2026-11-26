@@ -1,0 +1,21 @@
+.cc-messenger { display: grid; grid-template-columns: 340px 1fr; height: calc(100vh - var(--cc-navbar-h) - 3rem); min-height: 520px; background: #fff; border: 1px solid var(--cc-border); border-radius: var(--cc-radius-lg); overflow: hidden; box-shadow: var(--cc-shadow-sm); }
+.cc-convo-list { border-right: 1px solid var(--cc-border); display: flex; flex-direction: column; min-height: 0; }
+.cc-convo-head { padding: 1.1rem; border-bottom: 1px solid var(--cc-border); }
+.cc-convo-head h1 { font-size: 1.3rem; margin-bottom: 0.75rem; }
+.cc-convo-head .cc-input-icon > i { top: 0.5rem; }
+.cc-convo-list ul { list-style: none; margin: 0; padding: 0.5rem; overflow-y: auto; flex: 1; }
+.cc-convo { display: flex; align-items: center; gap: 0.75rem; width: 100%; border: 0; background: none; padding: 0.75rem; border-radius: 12px; text-align: left; transition: background var(--cc-transition); }
+.cc-convo:hover { background: var(--cc-bg); }
+.cc-convo.is-active { background: var(--cc-accent); }
+.cc-convo-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.1rem; }
+.cc-convo-text strong { font-size: 0.93rem; color: var(--cc-secondary); }
+.cc-convo-text small { font-size: 0.72rem; color: var(--cc-muted); white-space: nowrap; }
+.cc-convo-preview { font-size: 0.84rem; color: var(--cc-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cc-chat-pane { min-height: 0; min-width: 0; }
+
+@media (max-width: 767.98px) {
+  .cc-messenger { grid-template-columns: 1fr; height: calc(100vh - var(--cc-navbar-h) - 2rem); height: calc(100dvh - var(--cc-navbar-h) - 2rem); }
+  .cc-chat-pane { display: none; }
+  .cc-messenger.show-chat .cc-convo-list { display: none; }
+  .cc-messenger.show-chat .cc-chat-pane { display: block; }
+}

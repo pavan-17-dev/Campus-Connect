@@ -5,7 +5,7 @@ import ProductForm from '../components/ProductForm';
 import { createProduct } from '../services/productService';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
-import { getErrorMessage } from '../api/axios';
+import { getErrorMessage, getFieldErrors } from '../api/axios';
 
 export default function SellProduct() {
   const { user } = useAuth();
@@ -13,11 +13,13 @@ export default function SellProduct() {
   const navigate = useNavigate();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState({});
   const [created, setCreated] = useState(null);
 
   const handleSubmit = async (values) => {
     setSubmitting(true);
     setError('');
+    setFieldErrors({});
     try {
       const product = await createProduct(values, user);
       setCreated(product);
@@ -25,6 +27,7 @@ export default function SellProduct() {
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (err) {
       setError(getErrorMessage(err, 'Could not publish your listing.'));
+      setFieldErrors(getFieldErrors(err, { title: 'name', uploaded_images: 'images' }));
     } finally {
       setSubmitting(false);
     }
@@ -48,7 +51,7 @@ export default function SellProduct() {
         ) : (
           <>
             {error && <div className="alert alert-danger"><i className="bi bi-exclamation-triangle me-2" />{error}</div>}
-            <ProductForm onSubmit={handleSubmit} submitting={submitting} />
+            <ProductForm onSubmit={handleSubmit} submitting={submitting} serverErrors={fieldErrors} defaultLocation="" />
           </>
         )}
       </div>

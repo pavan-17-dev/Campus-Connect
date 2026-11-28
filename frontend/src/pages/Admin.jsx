@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { adminStats, adminUsers, listingsPerMonth, recentActivities, reportedProducts } from '../data/admin';
-import products from '../data/products';
+import * as adminService from '../services/adminService';
+import { getErrorMessage } from '../api/axios';
+import Loader from '../components/Loader';
 import categories, { getCategory } from '../data/categories';
 import { formatDate, formatPrice } from '../utils/format';
 import { handleImageError } from '../utils/image';
@@ -19,35 +20,78 @@ const statusTone = { Active: 'success', Pending: 'warning', Suspended: 'danger' 
 
 export default function Admin() {
   const [section, setSection] = useState('overview');
-  const [users, setUsers] = useState(adminUsers);
-  const [items, setItems] = useState(products);
+  const [dashboard, setDashboard] = useState(null);
+  const [users, setUsers] = useState([]);
+  const [items, setItems] = useState([]);
+  const [reports, setReports] = useState([]);
+  const [loadError, setLoadError] = useState('');
   const [userQuery, setUserQuery] = useState('');
   const [productQuery, setProductQuery] = useState('');
   const toast = useToast();
 
-  const stats = [
-    { label: 'Registered students', value: adminStats.totalStudents, icon: 'bi-people-fill', tone: 'primary', trend: '+12% this month' },
-    { label: 'Total listings', value: adminStats.totalListings, icon: 'bi-box-seam-fill', tone: 'info', trend: '+8% this month' },
-    { label: 'Active listings', value: adminStats.activeListings, icon: 'bi-lightning-charge-fill', tone: 'success', trend: '72% of total' },
-    { label: 'Reported products', value: adminStats.reportedProducts, icon: 'bi-flag-fill', tone: 'danger', trend: '5 need review' },
-  ];
-
-  const categoryShare = useMemo(() => {
-    const counts = products.reduce((a, p) => ({ ...a, [p.category]: (a[p.category] || 0) + 1 }), {});
-    return categories.map((c) => ({ ...c, count: counts[c.slug] || 0, pct: Math.round(((counts[c.slug] || 0) / products.length) * 100) }));
+  useEffect(() => {
+    Promise.all([adminService.getDashboard(), adminService.getUsers(), adminService.getListings(), adminService.getReports()])
+      .then(([d, u, l, r]) => {
+        setDashboard(d);
+        setUsers(u);
+        setItems(l);
+        setReports(r);
+      })
+      .catch((err) => setLoadError(getErrorMessage(err, 'Could not load admin data.')));
   }, []);
 
-  const maxBar = Math.max(...listingsPerMonth.map((m) => m.value));
+  const categoryShare = useMemo(() => {
+    const counts = Object.fromEntries((dashboard?.categoryCounts || []).map((c) => [c.slug, c.count]));
+    const total = Object.values(counts).reduce((a, b) => a + b, 0) || 1;
+    return categories.map((c) => ({ ...c, count: counts[c.slug] || 0, pct: Math.round(((counts[c.slug] || 0) / total) * 100) }));
+  }, [dashboard]);
+
+  if (loadError) {
+    return <div className="container py-5"><div className="alert alert-danger"><i className="bi bi-shield-exclamation me-2" />{loadError}</div></div>;
+  }
+  if (!dashboard) return <Loader label="Loading admin dashboard…" fullPage />;
+
+  const { stats: totals, listingsPerMonth, activities } = dashboard;
+  const pct = (a, b) => (b ? Math.round((a / b) * 100) : 0);
+  const stats = [
+    { label: 'Registered students', value: totals.totalStudents, icon: 'bi-people-fill', tone: 'primary', trend: 'Verified student accounts' },
+    { label: 'Total listings', value: totals.totalListings, icon: 'bi-box-seam-fill', tone: 'info', trend: 'All time' },
+    { label: 'Active listings', value: totals.activeListings, icon: 'bi-lightning-charge-fill', tone: 'success', trend: `${pct(totals.activeListings, totals.totalListings)}% of total` },
+    { label: 'Reported products', value: totals.reportedProducts, icon: 'bi-flag-fill', tone: 'danger', trend: totals.reportedProducts ? 'Need review' : 'All clear' },
+  ];
+
+  const maxBar = Math.max(1, ...listingsPerMonth.map((m) => m.value));
   const filteredUsers = users.filter((u) => `${u.name} ${u.email} ${u.college}`.toLowerCase().includes(userQuery.toLowerCase()));
   const filteredItems = items.filter((p) => p.name.toLowerCase().includes(productQuery.toLowerCase()));
 
-  const setUserStatus = (id, status) => {
-    setUsers((list) => list.map((u) => (u.id === id ? { ...u, status } : u)));
-    toast(`User ${status.toLowerCase()}`, status === 'Suspended' ? 'danger' : 'success');
+  const setUserStatus = async (id, status) => {
+    try {
+      await adminService.setUserActive(id, status === 'Active');
+      setUsers((list) => list.map((u) => (u.id === id ? { ...u, status } : u)));
+      toast(`User ${status === 'Active' ? 'activated' : 'suspended'}`, status === 'Suspended' ? 'danger' : 'success');
+    } catch (err) {
+      toast(getErrorMessage(err, 'Could not update the user.'), 'danger');
+    }
   };
-  const removeProduct = (id) => {
-    setItems((list) => list.filter((p) => p.id !== id));
-    toast('Listing removed', 'info');
+  const removeProduct = async (id) => {
+    if (!window.confirm('Remove this listing permanently?')) return;
+    try {
+      await adminService.removeListing(id);
+      setItems((list) => list.filter((p) => p.id !== id));
+      setReports((list) => list.filter((r) => r.productId !== id));
+      toast('Listing removed', 'info');
+    } catch (err) {
+      toast(getErrorMessage(err, 'Could not remove the listing.'), 'danger');
+    }
+  };
+  const dismissReport = async (report) => {
+    try {
+      await adminService.resolveReports(report.ids);
+      setReports((list) => list.filter((r) => r !== report));
+      toast('Report dismissed', 'info');
+    } catch (err) {
+      toast(getErrorMessage(err, 'Could not dismiss the report.'), 'danger');
+    }
   };
 
   return (
@@ -129,7 +173,8 @@ export default function Admin() {
             <div className="cc-card cc-card-pad">
               <h2 className="h6 mb-3">Recent activities</h2>
               <ul className="cc-activity">
-                {recentActivities.map((a) => (
+                {!activities.length && <li className="text-muted-cc small">No activity yet.</li>}
+                {activities.map((a) => (
                   <li key={a.id}>
                     <span className={`cc-activity-icon text-${a.tone} bg-${a.tone}-subtle`}><i className={`bi ${a.icon}`} /></span>
                     <span className="flex-grow-1">{a.text}</span>
@@ -226,20 +271,20 @@ export default function Admin() {
                   <tr><th>Reported listing</th><th>Reason</th><th>Reports</th><th className="text-end">Actions</th></tr>
                 </thead>
                 <tbody>
-                  {reportedProducts.map((r) => {
-                    const p = products.find((x) => x.id === r.id);
-                    return (
-                      <tr key={r.id}>
-                        <td><Link to={`/product/${p.id}`} className="fw-semibold small text-dark">{p.name}</Link></td>
-                        <td className="small">{r.reason}</td>
-                        <td><span className="badge text-bg-danger">{r.reports}</span></td>
-                        <td className="text-end text-nowrap">
-                          <button type="button" className="btn btn-sm btn-outline-secondary me-1" onClick={() => toast('Report dismissed', 'info')}>Dismiss</button>
-                          <button type="button" className="btn btn-sm btn-danger" onClick={() => toast('Listing taken down', 'danger')}>Take down</button>
-                        </td>
-                      </tr>
-                    );
-                  })}
+                  {!reports.length && (
+                    <tr><td colSpan={4} className="text-center text-muted-cc small py-4">No open reports.</td></tr>
+                  )}
+                  {reports.map((r) => (
+                    <tr key={r.productId}>
+                      <td><Link to={`/product/${r.productId}`} className="fw-semibold small text-dark">{r.productTitle}</Link></td>
+                      <td className="small">{r.reason}</td>
+                      <td><span className="badge text-bg-danger">{r.reports}</span></td>
+                      <td className="text-end text-nowrap">
+                        <button type="button" className="btn btn-sm btn-outline-secondary me-1" onClick={() => dismissReport(r)}>Dismiss</button>
+                        <button type="button" className="btn btn-sm btn-danger" onClick={() => removeProduct(r.productId)}>Take down</button>
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>

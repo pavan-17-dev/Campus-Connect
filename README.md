@@ -2,20 +2,36 @@
 
 A campus-only marketplace where students buy, sell and exchange books, electronics, stationery, clothing, college accessories, sports equipment and hostel essentials.
 
-This repository currently contains the **frontend prototype** (`frontend/`): React 18 + Vite, Bootstrap 5, custom CSS, React Router and Axios. It runs entirely on sample data and is wired so it can switch to the Django REST Framework backend later by changing one environment variable.
+| Part | Folder | Stack | Deploys to |
+|---|---|---|---|
+| Frontend | [`frontend/`](frontend) | React 18 + Vite, Bootstrap 5, CSS, React Router, Axios | Vercel |
+| Backend | [`backend/`](backend) | Django 5.2, Django REST Framework, PostgreSQL, JWT, Google Gemini | Render |
+
+Full backend documentation (setup, every API endpoint, tests, deployment) is in **[backend/README.md](backend/README.md)**.
 
 ## Quick start
 
+**1. Backend** (needs Python 3.12+ and PostgreSQL; database setup is in the backend README):
+```bash
+cd backend
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env            # set SECRET_KEY, DEBUG=True, DATABASE_URL, GEMINI_API_KEY
+python manage.py migrate
+python manage.py seed_demo_data # optional demo data
+python manage.py runserver      # http://localhost:8000/api/docs/
+```
+
+**2. Frontend:**
 ```bash
 cd frontend
 npm install
-cp .env.example .env     # optional
-npm run dev              # http://localhost:5173
+cp .env.example .env.local      # VITE_USE_API=true, VITE_API_BASE_URL=http://localhost:8000/api
+npm run dev                     # http://localhost:5173
 ```
 
-`npm run build` writes a production build to `frontend/dist/`.
-
-> **Demo login:** with sample data, any email and a password of 6 or more characters will log you in. Registration needs an academic email (`.ac.in`, `.edu`, …).
+> **Demo login:** after `seed_demo_data`, log in as `demo.student@bmsce.ac.in` with password `CampusDemo@2026`.
+> To run the frontend without the backend, set `VITE_USE_API=false`; it then uses built-in sample data.
 
 ## Pages
 
@@ -40,9 +56,15 @@ A floating **Campus Connect AI Assistant** (bottom-right) helps students find pr
 ## Project structure
 
 ```
+render.yaml               # Render Blueprint (database + API service)
+backend/                  # Django project – see backend/README.md
+├── config/               # settings, urls, wsgi/asgi
+├── accounts/ products/ orders/ messaging/ ai_features/ core/
+└── requirements.txt, .env.example, build.sh
+
 frontend/src
-├── api/axios.js          # Axios instance: base URL, JWT header, auto token refresh, DRF error parsing
-├── services/             # productService, authService, chatService, aiService (API ↔ sample-data switch)
+├── api/                  # axios.js (JWT, token refresh, errors) · normalize.js (API → component shapes)
+├── services/             # product, auth, order, chat, ai, admin services (API ↔ sample-data switch)
 ├── context/              # AuthContext, WishlistContext, ToastContext
 ├── components/           # Navbar, Footer, HeroSection, CategoryCard, ProductCard, SearchBar, FilterSidebar,
 │                         # ProductGrid, WishlistButton, LoginForm, RegisterForm, ProductForm, ChatWindow,
@@ -53,26 +75,16 @@ frontend/src
 └── styles/global.css     # Design tokens (colours, radii, shadows) and Bootstrap overrides
 ```
 
-## Connecting the Django backend
+## How the frontend talks to the backend
 
-1. Set `VITE_USE_API=true` and `VITE_API_BASE_URL=https://<your-render-app>.onrender.com/api` in `frontend/.env`.
-2. Implement these endpoints (the services already call them):
+- `frontend/src/api/axios.js`: Axios instance that adds the JWT, refreshes expired tokens and reads the backend's `{detail, errors}` error format.
+- `frontend/src/api/normalize.js`: converts the API's snake_case JSON into the camelCase objects the components use.
+- `frontend/src/services/*`: one service per feature (products, auth, orders, chat, AI, admin). Each switches between the API and sample data using `VITE_USE_API`.
 
-| Method & path | Used by |
-|---|---|
-| `POST /auth/register/`, `POST /auth/login/` → `{access, refresh, user}` | authService |
-| `POST /auth/token/refresh/` (simplejwt) | axios interceptor |
-| `POST /auth/password-reset/` | Forgot password |
-| `GET /products/?search=&category=&condition=&min_price=&max_price=&available=&ordering=&page=` | Marketplace |
-| `GET /products/featured/`, `GET /products/:id/`, `GET /products/:id/related/`, `GET /products/mine/` | Home, details, dashboard |
-| `POST /products/` (multipart, `images[]`) | Sell page |
-| `GET /recommendations/` | Recommended for You |
-| `GET /conversations/`, `POST /conversations/`, `POST /conversations/:id/messages/` | Messaging |
-| `POST /ai/assistant/` `{message, history}` → `{reply, products?}` | AI Assistant |
-
-**Gemini API key:** the key lives only in the Django environment (`GEMINI_API_KEY`). The browser talks to `/api/ai/assistant/`, and Django calls Gemini. Never put the key in any `VITE_*` variable, because those are bundled into public JavaScript.
+The Gemini API key lives only in the backend (`GEMINI_API_KEY`). Never put it in a `VITE_*` variable, because those are bundled into public JavaScript.
 
 ## Deployment
 
-- **Frontend → Vercel:** set the root directory to `frontend`, framework to Vite, and add the `VITE_*` env vars. `vercel.json` adds the SPA rewrite so deep links work.
-- **Backend → Render:** Django + DRF + PostgreSQL. Add the Vercel domain to `CORS_ALLOWED_ORIGINS`.
+- **Backend → Render:** use the included [`render.yaml`](render.yaml) Blueprint (PostgreSQL + web service + persistent disk for images). Step-by-step instructions are in [backend/README.md](backend/README.md#deploying-to-render).
+- **Frontend → Vercel:** set the root directory to `frontend` and the framework to Vite. Add `VITE_API_BASE_URL=https://<your-render-service>.onrender.com/api` and `VITE_USE_API=true`. `vercel.json` adds the SPA rewrite so deep links work.
+- Add the Vercel URL to the backend's `CORS_ALLOWED_ORIGINS`.

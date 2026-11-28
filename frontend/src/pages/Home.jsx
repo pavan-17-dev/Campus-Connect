@@ -39,7 +39,7 @@ export default function Home() {
             <Link to="/categories" className="btn btn-soft">View all <i className="bi bi-arrow-right ms-1" /></Link>
           </div>
           <div className="cc-category-row">
-            {categories.map((c) => (
+            {categories.slice(0, 7).map((c) => (
               <CategoryCard key={c.slug} category={c} />
             ))}
           </div>

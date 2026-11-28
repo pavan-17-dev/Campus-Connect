@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import FormField, { PasswordField } from './FormField';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
-import { getErrorMessage } from '../api/axios';
+import { getErrorMessage, getFieldErrors } from '../api/axios';
 import { campuses } from '../data/products';
 import { passwordStrength, validateRegister } from '../utils/validation';
 
@@ -39,6 +39,8 @@ export default function RegisterForm() {
       toast('Account created! Please log in.');
       navigate('/login', { state: { message: 'Registration successful. Log in with your student email.' } });
     } catch (err) {
+      // Show the server's field errors (e.g. "email already exists") under each input.
+      setErrors(getFieldErrors(err, { full_name: 'fullName', student_id: 'studentId', confirm_password: 'confirmPassword' }));
       setServerError(getErrorMessage(err, 'Registration failed. Please try again.'));
     } finally {
       setSubmitting(false);

@@ -33,3 +33,6 @@
 .cc-tips li { margin-bottom: 0.35rem; }
 
 @media (max-width: 767.98px) { .cc-condition-grid { grid-template-columns: repeat(2, 1fr); } }
+
+.cc-ai-btn { background: linear-gradient(135deg, #2563eb, #7c3aed); color: #fff; border: 0; border-radius: 999px; padding: 0.3rem 0.85rem; }
+.cc-ai-btn:hover, .cc-ai-btn:disabled { color: #fff; opacity: 0.9; }

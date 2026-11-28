@@ -1,12 +1,17 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import ChatWindow from '../components/ChatWindow';
 import Loader from '../components/Loader';
-import { getConversations, sendMessage } from '../services/chatService';
+import { USE_API, getErrorMessage } from '../api/axios';
+import { useToast } from '../context/ToastContext';
+import { getConversationMessages, getConversations, markConversationRead, sendMessage } from '../services/chatService';
 import products from '../data/products';
 import { timeAgo } from '../utils/format';
 import './Messages.css';
 
+const POLL_MS = 5000; // REST polling for new messages (WebSockets can replace this later)
+
+// Sample-data mode only: simulated replies from the other student.
 const autoReplies = [
   'Sure! Let me know a time that works for you.',
   'Yes, it is still available 🙂',
@@ -21,36 +26,80 @@ export default function Messages() {
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
   const [mobileChatOpen, setMobileChatOpen] = useState(false);
+  const [error, setError] = useState('');
+  const toast = useToast();
+  const conversationsRef = useRef(conversations);
+  conversationsRef.current = conversations;
 
   useEffect(() => {
-    getConversations().then((list) => {
-      const { conversationId, product, seller } = location.state || {};
-      let selected = conversationId;
-      // Opened via "Contact Seller": reuse or create a conversation with that seller.
-      if (product && seller) {
-        const existing = list.find((c) => c.participant.id === seller.id && c.productId === product.id);
-        if (existing) selected = existing.id;
-        else {
-          const fresh = {
-            id: Date.now(),
-            productId: product.id,
-            product,
-            participant: { id: seller.id, name: seller.name, avatar: seller.avatar, college: seller.college, online: true },
-            unread: 0,
-            messages: [],
-          };
-          list = [fresh, ...list];
-          selected = fresh.id;
+    getConversations()
+      .then((list) => {
+        const { conversationId, product, seller } = location.state || {};
+        let selected = conversationId;
+        // Opened via "Contact Seller": reuse or create a conversation with that seller.
+        if (product && seller) {
+          const existing = list.find((c) => c.participant.id === seller.id && c.productId === product.id);
+          if (existing) selected = existing.id;
+          else {
+            const fresh = {
+              id: Date.now(),
+              productId: product.id,
+              product,
+              participant: { id: seller.id, name: seller.name, avatar: seller.avatar, college: seller.college, online: true },
+              unread: 0,
+              messages: [],
+            };
+            list = [fresh, ...list];
+            selected = fresh.id;
+          }
         }
-      }
-      setConversations(list);
-      if (selected) {
-        setActiveId(selected);
-        setMobileChatOpen(true);
-      } else if (window.innerWidth >= 768 && list.length) setActiveId(list[0].id);
-      setLoading(false);
-    });
+        setConversations(list);
+        if (selected) {
+          setActiveId(selected);
+          setMobileChatOpen(true);
+        } else if (window.innerWidth >= 768 && list.length) setActiveId(list[0].id);
+      })
+      .catch((err) => setError(getErrorMessage(err, 'Could not load your conversations.')))
+      .finally(() => setLoading(false));
   }, [location.state]);
+
+  const mergeMessages = useCallback((id, incoming, replace = false) => {
+    setConversations((list) =>
+      list.map((c) => {
+        if (c.id !== id) return c;
+        const base = replace ? [] : c.messages;
+        const fresh = incoming.filter((m) => !base.some((x) => x.id === m.id));
+        return fresh.length || replace ? { ...c, messages: [...base, ...fresh] } : c;
+      })
+    );
+  }, []);
+
+  // API mode: load the full thread when a conversation opens, then poll for new messages.
+  useEffect(() => {
+    if (!USE_API || !activeId) return undefined;
+    let cancelled = false;
+    getConversationMessages(activeId)
+      .then((messages) => !cancelled && mergeMessages(activeId, messages, true))
+      .catch(() => {});
+    markConversationRead(activeId).catch(() => {});
+
+    const timer = setInterval(() => {
+      const current = conversationsRef.current.find((c) => c.id === activeId);
+      const lastId = current?.messages.at(-1)?.id;
+      getConversationMessages(activeId, lastId)
+        .then((messages) => {
+          if (!cancelled && messages.length) {
+            mergeMessages(activeId, messages);
+            markConversationRead(activeId).catch(() => {});
+          }
+        })
+        .catch(() => {});
+    }, POLL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [activeId, mergeMessages]);
 
   const active = conversations.find((c) => c.id === activeId);
   const activeProduct = active?.product || products.find((p) => p.id === active?.productId);
@@ -71,15 +120,24 @@ export default function Messages() {
 
   const handleSend = async (text) => {
     const id = activeId;
-    const msg = await sendMessage(id, text);
-    appendMessage(id, msg);
-    // Demo only: simulate the other student replying. Real-time replies will come via WebSockets.
-    setTimeout(() => {
-      appendMessage(id, { id: Date.now(), from: 'them', text: autoReplies[Math.floor(Math.random() * autoReplies.length)], at: new Date().toISOString() });
-    }, 1500);
+    try {
+      const msg = await sendMessage(id, text);
+      if (USE_API) mergeMessages(id, [msg]);
+      else appendMessage(id, msg);
+    } catch (err) {
+      toast(getErrorMessage(err, 'Message not sent. Please try again.'), 'danger');
+      return;
+    }
+    if (!USE_API) {
+      // Sample-data mode only: simulate the other student replying.
+      setTimeout(() => {
+        appendMessage(id, { id: Date.now(), from: 'them', text: autoReplies[Math.floor(Math.random() * autoReplies.length)], at: new Date().toISOString() });
+      }, 1500);
+    }
   };
 
   if (loading) return <Loader label="Loading conversations…" fullPage />;
+  if (error) return <div className="container py-5"><div className="alert alert-danger">{error}</div></div>;
 
   return (
     <div className="container py-4">

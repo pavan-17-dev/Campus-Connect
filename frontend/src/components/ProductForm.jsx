@@ -4,6 +4,8 @@ import categories from '../data/categories';
 import { conditions } from '../data/products';
 import { MAX_IMAGE_MB, MAX_IMAGES, validateProduct } from '../utils/validation';
 import { formatPrice } from '../utils/format';
+import { generateDescription } from '../services/aiService';
+import { getErrorMessage } from '../api/axios';
 import './ProductForm.css';
 
 const initial = { name: '', description: '', category: '', price: '', condition: '', images: [], location: '' };
@@ -12,7 +14,7 @@ const conditionHelp = {
   New: 'Unused, sealed or with tags',
   'Like New': 'Used briefly, no visible wear',
   Good: 'Normal signs of use, fully working',
-  Fair: 'Visible wear, works as described',
+  Used: 'Visible wear, works as described',
 };
 
 /**
@@ -20,12 +22,44 @@ const conditionHelp = {
  * `onSubmit(values)` receives the raw File objects (for multipart upload to DRF)
  * plus data-URL previews (used by the sample-data mode).
  */
-export default function ProductForm({ onSubmit, submitting = false, defaultLocation = '' }) {
+export default function ProductForm({ onSubmit, submitting = false, defaultLocation = '', serverErrors = {} }) {
   const [values, setValues] = useState({ ...initial, location: defaultLocation });
   const [previews, setPreviews] = useState([]);
   const [errors, setErrors] = useState({});
   const [dragging, setDragging] = useState(false);
+  const [ai, setAi] = useState({ loading: false, error: '', drafted: false });
   const fileInput = useRef(null);
+
+  // Field errors returned by the API (e.g. price too high) appear under the inputs.
+  useEffect(() => {
+    if (Object.keys(serverErrors).length) setErrors((er) => ({ ...er, ...serverErrors }));
+  }, [serverErrors]);
+
+  const writeWithAI = async () => {
+    const missing = {};
+    if (values.name.trim().length < 3) missing.name = 'Add a product name first.';
+    if (!values.category) missing.category = 'Choose a category first.';
+    if (!values.condition) missing.condition = 'Select the condition first.';
+    if (Object.keys(missing).length) {
+      setErrors((er) => ({ ...er, ...missing }));
+      setAi({ loading: false, error: 'Fill in the name, category and condition so the AI knows what you are selling.', drafted: false });
+      return;
+    }
+    setAi({ loading: true, error: '', drafted: false });
+    try {
+      const text = await generateDescription({
+        name: values.name.trim(),
+        category: values.category,
+        condition: values.condition,
+        details: values.description.trim().slice(0, 600), // your notes guide the AI
+      });
+      setValues((v) => ({ ...v, description: text.slice(0, 1000) }));
+      setErrors((er) => ({ ...er, description: undefined }));
+      setAi({ loading: false, error: '', drafted: true });
+    } catch (err) {
+      setAi({ loading: false, error: getErrorMessage(err, 'The AI assistant is unavailable. Please write the description yourself.'), drafted: false });
+    }
+  };
 
   useEffect(() => () => previews.forEach((p) => p.objectUrl && URL.revokeObjectURL(p.objectUrl)), []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -84,12 +118,23 @@ export default function ProductForm({ onSubmit, submitting = false, defaultLocat
         <div className="cc-card cc-card-pad mb-4">
           <h2 className="cc-form-section"><span>1</span>Product details</h2>
           <FormField id="pf-name" label="Product Name *" placeholder="e.g. Casio fx-991ES Plus Scientific Calculator" maxLength={100} value={values.name} onChange={set('name')} error={errors.name} />
+          <div className="d-flex justify-content-between align-items-center gap-2 flex-wrap mb-1">
+            <label htmlFor="pf-description" className="form-label mb-0">Product Description *</label>
+            <button type="button" className="btn btn-sm cc-ai-btn" onClick={writeWithAI} disabled={ai.loading}>
+              {ai.loading ? <><span className="spinner-border spinner-border-sm me-1" />Writing…</> : <><i className="bi bi-stars me-1" />Write with AI</>}
+            </button>
+          </div>
+          {ai.drafted && (
+            <div className="alert alert-info py-2 small mb-2" role="status">
+              <i className="bi bi-stars me-1" />AI draft added. <strong>Review and edit it</strong> so it is accurate before you publish.
+            </div>
+          )}
+          {ai.error && <div className="alert alert-warning py-2 small mb-2" role="alert">{ai.error}</div>}
           <FormField
             id="pf-description"
             as="textarea"
-            rows={5}
-            label="Product Description *"
-            placeholder="Describe the item: edition/model, how long you've used it, any defects, what's included…"
+            rows={6}
+            placeholder="Describe the item: edition/model, how long you've used it, any defects, what's included… (or jot a few notes and use Write with AI)"
             maxLength={1000}
             value={values.description}
             onChange={set('description')}

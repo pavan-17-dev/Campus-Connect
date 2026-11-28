@@ -5,8 +5,7 @@ import SearchBar from '../components/SearchBar';
 import FilterSidebar from '../components/FilterSidebar';
 import ProductGrid from '../components/ProductGrid';
 import categories, { getCategory } from '../data/categories';
-import sampleProducts from '../data/products';
-import { getProducts, PAGE_SIZE } from '../services/productService';
+import { getCategoryCounts, getProducts } from '../services/productService';
 import { recordInterest } from '../utils/activity';
 import { formatPrice } from '../utils/format';
 import './Marketplace.css';
@@ -36,16 +35,22 @@ const toParams = (f) => {
   return p;
 };
 
-const categoryCounts = sampleProducts.reduce((acc, p) => ({ ...acc, [p.category]: (acc[p.category] || 0) + 1 }), {});
-
 export default function Marketplace() {
   const [searchParams, setSearchParams] = useSearchParams();
   const filters = useMemo(() => fromParams(searchParams), [searchParams]);
   const [results, setResults] = useState([]);
-  const [visible, setVisible] = useState(PAGE_SIZE);
+  const [count, setCount] = useState(0);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showFilters, setShowFilters] = useState(false);
+  const [categoryCounts, setCategoryCounts] = useState({});
+
+  useEffect(() => {
+    getCategoryCounts().then(setCategoryCounts).catch(() => {});
+  }, []);
 
   const updateFilters = useCallback(
     (partial) => setSearchParams(toParams({ ...filters, ...partial }), { replace: true }),
@@ -55,14 +60,28 @@ export default function Marketplace() {
   const load = useCallback(() => {
     setLoading(true);
     setError(null);
-    getProducts(filters)
+    getProducts({ ...filters, page: 1 })
       .then((res) => {
         setResults(res.results);
-        setVisible(PAGE_SIZE);
+        setCount(res.count);
+        setHasMore(res.hasMore);
+        setPage(1);
       })
       .catch(() => setError('Could not load products. Please check your connection.'))
       .finally(() => setLoading(false));
   }, [filters]);
+
+  const loadMore = () => {
+    setLoadingMore(true);
+    getProducts({ ...filters, page: page + 1 })
+      .then((res) => {
+        setResults((prev) => [...prev, ...res.results.filter((p) => !prev.some((x) => x.id === p.id))]);
+        setHasMore(res.hasMore);
+        setPage((p) => p + 1);
+      })
+      .catch(() => setError('Could not load more products.'))
+      .finally(() => setLoadingMore(false));
+  };
 
   useEffect(() => {
     load();
@@ -89,7 +108,6 @@ export default function Marketplace() {
 
   const singleCategory = filters.categories.length === 1 ? getCategory(filters.categories[0]) : null;
   const reset = () => setSearchParams({}, { replace: true });
-  const shown = results.slice(0, visible);
 
   return (
     <>
@@ -133,7 +151,7 @@ export default function Marketplace() {
               <FilterSidebar filters={filters} onChange={updateFilters} onReset={reset} counts={categoryCounts} />
               <div className="cc-filter-drawer-foot d-lg-none">
                 <button type="button" className="btn btn-primary w-100" onClick={() => setShowFilters(false)}>
-                  Show {results.length} result{results.length === 1 ? '' : 's'}
+                  Show {count} result{count === 1 ? '' : 's'}
                 </button>
               </div>
             </div>
@@ -143,7 +161,7 @@ export default function Marketplace() {
           <div className="col-lg-9">
             <div className="cc-results-bar">
               <span className="text-muted-cc">
-                {loading ? 'Searching…' : <><strong className="text-dark">{results.length}</strong> product{results.length === 1 ? '' : 's'} found</>}
+                {loading ? 'Searching…' : <><strong className="text-dark">{count}</strong> product{count === 1 ? '' : 's'} found</>}
               </span>
               <div className="d-flex align-items-center gap-2">
                 <label htmlFor="sort" className="small text-muted-cc text-nowrap">Sort by</label>
@@ -168,7 +186,7 @@ export default function Marketplace() {
             )}
 
             <ProductGrid
-              products={shown}
+              products={results}
               loading={loading}
               error={error}
               onRetry={load}
@@ -179,10 +197,10 @@ export default function Marketplace() {
               emptyAction={<button type="button" className="btn btn-primary" onClick={reset}>Clear filters</button>}
             />
 
-            {!loading && !error && visible < results.length && (
+            {!loading && !error && hasMore && (
               <div className="text-center mt-4">
-                <button type="button" className="btn btn-outline-primary bg-white px-4" onClick={() => setVisible((v) => v + PAGE_SIZE)}>
-                  Load more <span className="text-muted-cc ms-1">({results.length - visible} more)</span>
+                <button type="button" className="btn btn-outline-primary bg-white px-4" onClick={loadMore} disabled={loadingMore}>
+                  {loadingMore ? <><span className="spinner-border spinner-border-sm me-2" />Loading…</> : <>Load more <span className="text-muted-cc ms-1">({count - results.length} more)</span></>}
                 </button>
               </div>
             )}

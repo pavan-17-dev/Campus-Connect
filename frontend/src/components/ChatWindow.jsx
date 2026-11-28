@@ -49,7 +49,7 @@ export default function ChatWindow({ conversation, product, onSend, onBack, send
         </div>
         <div className="cc-chat-who">
           <strong>{participant.name}</strong>
-          <small>{participant.online ? 'Online' : 'Offline'} · {participant.college}</small>
+          <small>{participant.online !== undefined && `${participant.online ? 'Online' : 'Offline'} · `}{participant.college}</small>
         </div>
         <div className="ms-auto d-flex gap-2">
           <button type="button" className="cc-icon-btn" aria-label="Call (coming soon)" disabled><i className="bi bi-telephone" /></button>

@@ -144,7 +144,7 @@ const products = [
     price: 300,
     originalPrice: 695,
     category: 'books',
-    condition: 'Fair',
+    condition: 'Used',
     description:
       'Oxford University Press, 2nd edition. Some underlining and notes in the margins (helpful ones!). Covers arrays, linked lists, stacks, queues, trees and graphs.',
     images: [img('1532012197267-da84d127e765'), img('1544947950-fa07a98d237f')],
@@ -345,6 +345,6 @@ export const campuses = [
   'MS Ramaiah Institute of Technology',
 ];
 
-export const conditions = ['New', 'Like New', 'Good', 'Fair'];
+export const conditions = ['New', 'Like New', 'Good', 'Used'];
 
 export default products;

@@ -1,4 +1,5 @@
 import api, { USE_API } from '../api/axios';
+import { normalizeProduct } from '../api/normalize';
 import sampleProducts from '../data/products';
 
 // Simulated network latency so loading states are visible with sample data.
@@ -47,35 +48,42 @@ export const filterProducts = (list, params = {}) => {
   return result;
 };
 
+// Query parameters understood by the Django ProductViewSet / ProductFilter.
+const CONDITION_CODES = { New: 'new', 'Like New': 'like_new', Good: 'good', Used: 'used' };
 const toQuery = (params) => ({
   search: params.search || undefined,
   category: params.categories?.join(',') || undefined,
-  condition: params.condition?.join(',') || undefined,
+  condition: params.condition?.map((c) => CONDITION_CODES[c] || c).join(',') || undefined,
   min_price: params.minPrice || undefined,
   max_price: params.maxPrice || undefined,
-  available: params.availability === 'all' ? undefined : params.availability === 'available',
+  available: params.availability === 'all' || !params.availability ? undefined : params.availability === 'available',
   ordering: { newest: '-created_at', oldest: 'created_at', price_asc: 'price', price_desc: '-price' }[params.sort],
-  page: params.page,
+  page: params.page || 1,
+  page_size: PAGE_SIZE,
 });
 
+const unpage = (data) => (Array.isArray(data) ? data : data.results);
+
+/** Returns one page: { results, count, hasMore }. */
 export const getProducts = async (params = {}) => {
+  const page = params.page || 1;
   if (USE_API) {
     const { data } = await api.get('/products/', { params: toQuery(params) });
-    return { results: data.results, count: data.count };
+    return { results: data.results.map(normalizeProduct), count: data.count, hasMore: Boolean(data.next) };
   }
   await delay();
-  const results = filterProducts(allSample(), params);
-  return { results, count: results.length };
+  const all = filterProducts(allSample(), params);
+  return { results: all.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE), count: all.length, hasMore: page * PAGE_SIZE < all.length };
 };
 
 export const getFeaturedProducts = async () => {
-  if (USE_API) return (await api.get('/products/featured/')).data;
+  if (USE_API) return (await api.get('/products/featured/')).data.map(normalizeProduct);
   await delay(350);
   return sampleProducts.filter((p) => p.featured);
 };
 
 export const getProductById = async (id) => {
-  if (USE_API) return (await api.get(`/products/${id}/`)).data;
+  if (USE_API) return normalizeProduct((await api.get(`/products/${id}/`)).data);
   await delay(350);
   const product = allSample().find((p) => String(p.id) === String(id));
   if (!product) throw new Error('Product not found');
@@ -83,7 +91,7 @@ export const getProductById = async (id) => {
 };
 
 export const getRelatedProducts = async (product, limit = 4) => {
-  if (USE_API) return (await api.get(`/products/${product.id}/related/`)).data;
+  if (USE_API) return (await api.get(`/products/${product.id}/related/`, { params: { limit } })).data.map(normalizeProduct);
   await delay(250);
   return allSample()
     .filter((p) => p.id !== product.id && p.category === product.category)
@@ -91,12 +99,21 @@ export const getRelatedProducts = async (product, limit = 4) => {
     .slice(0, limit);
 };
 
+export const reportProduct = async (productId, reason = 'other', details = '') => {
+  if (USE_API) return (await api.post(`/products/${productId}/report/`, { reason, details })).data;
+  await delay(300);
+  return { detail: 'Reported' };
+};
+
 /**
  * Recommendations are generated server-side (Django + Gemini) from the user's
  * interests and browsing history. Locally we approximate it from viewed categories.
  */
 export const getRecommendations = async (interests = [], limit = 4) => {
-  if (USE_API) return (await api.get('/recommendations/', { params: { limit } })).data;
+  if (USE_API) {
+    const { data } = await api.get('/recommendations/', { params: { limit, categories: interests.join(',') || undefined } });
+    return data.map(normalizeProduct);
+  }
   await delay(500);
   const pool = sampleProducts.filter((p) => p.available && !p.featured);
   if (!interests.length) return pool.slice(0, limit);
@@ -107,7 +124,7 @@ export const getRecommendations = async (interests = [], limit = 4) => {
 };
 
 export const getMyListings = async (user) => {
-  if (USE_API) return (await api.get('/products/mine/')).data;
+  if (USE_API) return unpage((await api.get('/products/my-products/', { params: { page_size: 100 } })).data).map(normalizeProduct);
   await delay(300);
   const mine = readLocal();
   return mine.length ? mine : sampleProducts.filter((p) => p.seller.id === (user?.id ?? 1)).slice(0, 4);
@@ -115,13 +132,17 @@ export const getMyListings = async (user) => {
 
 export const createProduct = async (values, user) => {
   if (USE_API) {
+    // multipart/form-data so the images upload together with the listing
     const form = new FormData();
-    Object.entries(values).forEach(([k, v]) => {
-      if (k === 'images') v.forEach((file) => form.append('images', file));
-      else form.append(k, v);
-    });
+    form.append('title', values.name);
+    form.append('description', values.description);
+    form.append('category', values.category);
+    form.append('price', values.price);
+    form.append('condition', values.condition);
+    form.append('location', values.location);
+    values.images.forEach((file) => form.append('uploaded_images', file));
     const { data } = await api.post('/products/', form, { headers: { 'Content-Type': 'multipart/form-data' } });
-    return data;
+    return normalizeProduct(data);
   }
   await delay(700);
   const product = {
@@ -155,4 +176,13 @@ export const createProduct = async (values, user) => {
     // Storage can be full (large image previews) – the listing still "succeeds" for the demo.
   }
   return product;
+};
+
+/** Item counts per category slug, e.g. { books: 3, electronics: 4 }. */
+export const getCategoryCounts = async () => {
+  if (USE_API) {
+    const { data } = await api.get('/categories/');
+    return Object.fromEntries(data.map((c) => [c.slug, c.product_count]));
+  }
+  return allSample().reduce((acc, p) => ({ ...acc, [p.category]: (acc[p.category] || 0) + 1 }), {});
 };

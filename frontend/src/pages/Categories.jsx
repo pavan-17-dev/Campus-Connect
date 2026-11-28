@@ -1,11 +1,15 @@
+import { useEffect, useState } from 'react';
 import PageHeader from '../components/PageHeader';
 import CategoryCard from '../components/CategoryCard';
 import categories from '../data/categories';
-import products from '../data/products';
-
-const counts = products.reduce((a, p) => ({ ...a, [p.category]: (a[p.category] || 0) + 1 }), {});
+import { getCategoryCounts } from '../services/productService';
 
 export default function Categories() {
+  const [counts, setCounts] = useState({});
+  useEffect(() => {
+    getCategoryCounts().then(setCounts).catch(() => {});
+  }, []);
+
   return (
     <>
       <PageHeader title="All Categories" subtitle="Browse products by what you need this semester." crumbs={[{ label: 'Categories' }]} />

@@ -55,11 +55,13 @@ api.interceptors.response.use(
           refreshPromise ||
           axios.post(`${API_BASE_URL}/auth/token/refresh/`, { refresh: tokenStorage.refresh });
         const { data } = await refreshPromise;
-        tokenStorage.set({ access: data.access }, !!localStorage.getItem(REFRESH_KEY));
+        // The backend rotates refresh tokens, so store the new one as well.
+        tokenStorage.set({ access: data.access, refresh: data.refresh }, !!localStorage.getItem(REFRESH_KEY));
         original.headers.Authorization = `Bearer ${data.access}`;
         return api(original);
       } catch (refreshError) {
         tokenStorage.clear();
+        window.dispatchEvent(new Event('cc:session-expired')); // AuthContext logs the user out
         return Promise.reject(refreshError);
       } finally {
         refreshPromise = null;
@@ -69,14 +71,22 @@ api.interceptors.response.use(
   }
 );
 
-// Normalises DRF error payloads into a readable message.
+// The backend always answers errors as {detail, errors?}. Turn that into one readable message.
 export const getErrorMessage = (error, fallback = 'Something went wrong. Please try again.') => {
-  const data = error?.response?.data;
-  if (!data) return error?.message || fallback;
-  if (typeof data === 'string') return data;
+  if (!error?.response) return error?.code === 'ERR_NETWORK' ? 'Cannot reach the server. Check your connection.' : error?.message || fallback;
+  const data = error.response.data;
+  if (!data || typeof data === 'string') return fallback;
   if (data.detail) return data.detail;
   const first = Object.values(data)[0];
   return Array.isArray(first) ? first[0] : fallback;
+};
+
+// Field errors from DRF ({errors: {price: ["..."]}}) mapped to {price: "..."} for forms.
+export const getFieldErrors = (error, fieldMap = {}) => {
+  const errors = error?.response?.data?.errors || {};
+  return Object.fromEntries(
+    Object.entries(errors).map(([key, value]) => [fieldMap[key] || key, Array.isArray(value) ? String(value[0]) : String(value)])
+  );
 };
 
 export default api;

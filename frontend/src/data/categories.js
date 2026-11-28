@@ -8,6 +8,8 @@ const categories = [
   { slug: 'accessories', name: 'College Accessories', icon: 'bi-backpack', color: '#EA580C', description: 'Backpacks, ID holders & watches' },
   { slug: 'sports', name: 'Sports Equipment', icon: 'bi-trophy', color: '#16A34A', description: 'Bats, rackets, footballs & cycles' },
   { slug: 'hostel', name: 'Hostel Essentials', icon: 'bi-house-heart', color: '#CA8A04', description: 'Lamps, kettles, mattresses & more' },
+  { slug: 'furniture', name: 'Furniture', icon: 'bi-lamp', color: '#9333EA', description: 'Study tables, chairs, shelves & storage' },
+  { slug: 'other', name: 'Other', icon: 'bi-grid', color: '#475569', description: 'Everything else students need' },
 ];
 
 export const getCategory = (slug) => categories.find((c) => c.slug === slug);

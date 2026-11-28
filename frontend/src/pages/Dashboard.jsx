@@ -8,7 +8,8 @@ import { useWishlist } from '../context/WishlistContext';
 import { useToast } from '../context/ToastContext';
 import { getMyListings } from '../services/productService';
 import { getConversations } from '../services/chatService';
-import products from '../data/products';
+import { getMyOrders, getSellerOrders, updateOrder } from '../services/orderService';
+import { getErrorMessage, getFieldErrors } from '../api/axios';
 import { formatDate, formatPrice, timeAgo } from '../utils/format';
 import { handleImageError } from '../utils/image';
 import './Dashboard.css';
@@ -22,13 +23,7 @@ const tabs = [
   { key: 'edit', label: 'Edit Profile', icon: 'bi-pencil-square' },
 ];
 
-// Sample purchase history – replaced by GET /api/orders/ later.
-const orders = [
-  { id: 'CC-10234', product: products[1], status: 'Completed', date: '2026-11-24T18:31:00' },
-  { id: 'CC-10198', product: products[10], status: 'Pending pickup', date: '2026-11-23T21:05:00' },
-  { id: 'CC-10077', product: products[13], status: 'Cancelled', date: '2026-11-02T10:00:00' },
-];
-const statusTone = { Completed: 'success', 'Pending pickup': 'warning', Cancelled: 'secondary' };
+const statusTone = { pending: 'warning', accepted: 'primary', completed: 'success', rejected: 'secondary', cancelled: 'secondary' };
 
 export default function Dashboard() {
   const [params, setParams] = useSearchParams();
@@ -38,13 +33,28 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const [listings, setListings] = useState([]);
   const [convos, setConvos] = useState([]);
+  const [purchases, setPurchases] = useState([]);
+  const [sales, setSales] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
 
   useEffect(() => {
-    Promise.all([getMyListings(user), getConversations()])
-      .then(([l, c]) => { setListings(l); setConvos(c); })
+    Promise.all([getMyListings(user), getConversations(), getMyOrders(), getSellerOrders()])
+      .then(([l, c, mine, received]) => {
+        setListings(l);
+        setConvos(c);
+        setPurchases(mine);
+        setSales(received);
+      })
+      .catch((err) => setLoadError(getErrorMessage(err, 'Could not load your dashboard.')))
       .finally(() => setLoading(false));
-  }, [user]);
+  }, [user.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const replaceOrder = (updated) => {
+    const swap = (list) => list.map((o) => (o.id === updated.id ? updated : o));
+    setPurchases(swap);
+    setSales(swap);
+  };
 
   const go = (key) => setParams(key === 'overview' ? {} : { tab: key });
   const initials = user.fullName.split(' ').map((s) => s[0]).join('').slice(0, 2).toUpperCase();
@@ -52,7 +62,7 @@ export default function Dashboard() {
 
   const stats = [
     { label: 'Active listings', value: listings.filter((l) => l.available).length, icon: 'bi-box-seam', tone: 'primary', tab: 'listings' },
-    { label: 'Orders', value: orders.length, icon: 'bi-bag-check', tone: 'success', tab: 'orders' },
+    { label: 'Orders', value: purchases.length + sales.filter((o) => o.status === 'pending').length, icon: 'bi-bag-check', tone: 'success', tab: 'orders' },
     { label: 'Wishlist', value: wishlist.length, icon: 'bi-heart', tone: 'danger', tab: 'wishlist' },
     { label: 'Unread messages', value: unread, icon: 'bi-chat-dots', tone: 'warning', tab: 'messages' },
   ];
@@ -85,6 +95,7 @@ export default function Dashboard() {
         </div>
 
         <div className="col-lg-9">
+          {loadError && <div className="alert alert-danger"><i className="bi bi-exclamation-triangle me-2" />{loadError}</div>}
           {active === 'overview' && (
             <>
               <div className="cc-dash-welcome">
@@ -137,19 +148,23 @@ export default function Dashboard() {
 
           {active === 'orders' && (
             <Panel title="My Orders">
-              <div className="cc-card overflow-hidden">
-                {orders.map((o) => (
-                  <div key={o.id} className="cc-order">
-                    <img src={o.product.images[0]} alt="" onError={handleImageError(o.product.name)} />
-                    <div className="min-w-0 flex-grow-1">
-                      <Link to={`/product/${o.product.id}`} className="fw-semibold text-dark d-block text-truncate">{o.product.name}</Link>
-                      <small className="text-muted-cc">Order {o.id} · {formatDate(o.date)} · Seller: {o.product.seller.name}</small>
-                    </div>
-                    <strong className="d-none d-sm-block">{formatPrice(o.product.price)}</strong>
-                    <span className={`badge text-bg-${statusTone[o.status]}`}>{o.status}</span>
-                  </div>
-                ))}
-              </div>
+              <p className="text-muted-cc small">
+                Orders are completed in person: the seller accepts your request, you meet at the pickup spot on campus and pay there.
+              </p>
+              <OrderList
+                title="My purchases"
+                orders={purchases}
+                loading={loading}
+                onChange={replaceOrder}
+                empty={<>No purchases yet. <Link to="/marketplace">Find something you need</Link>.</>}
+              />
+              <OrderList
+                title="Requests for my items"
+                orders={sales}
+                loading={loading}
+                onChange={replaceOrder}
+                empty="No one has requested your items yet."
+              />
             </Panel>
           )}
 
@@ -197,6 +212,72 @@ export default function Dashboard() {
   );
 }
 
+const actionsFor = (o) =>
+  [
+    o.canAccept && { action: 'accept', label: 'Accept', cls: 'btn-success' },
+    o.canReject && { action: 'reject', label: 'Reject', cls: 'btn-outline-danger' },
+    o.canComplete && { action: 'complete', label: 'Mark completed', cls: 'btn-primary' },
+    o.canCancel && { action: 'cancel', label: 'Cancel', cls: 'btn-outline-secondary' },
+  ].filter(Boolean);
+
+function OrderList({ title, orders, loading, onChange, empty }) {
+  const toast = useToast();
+  const [busy, setBusy] = useState(null);
+
+  const run = async (order, action) => {
+    if (action === 'cancel' && !window.confirm('Cancel this order?')) return;
+    setBusy(`${order.id}-${action}`);
+    try {
+      onChange(await updateOrder(order.id, action));
+      toast(`Order ${{ accept: 'accepted', reject: 'rejected', cancel: 'cancelled', complete: 'completed' }[action]}`);
+    } catch (err) {
+      toast(getErrorMessage(err, 'Could not update the order.'), 'danger');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <section className="mb-4">
+      <h2 className="h6 text-uppercase text-muted-cc fw-bold small mb-2">{title}</h2>
+      <div className="cc-card overflow-hidden">
+        {loading && <div className="p-4 text-center text-muted-cc small">Loading…</div>}
+        {!loading && !orders.length && <div className="p-4 text-center text-muted-cc small">{empty}</div>}
+        {orders.map((o) => {
+          const other = o.role === 'seller' ? o.buyer : o.seller;
+          return (
+            <div key={o.id} className="cc-order flex-wrap">
+              <img src={o.product?.image} alt="" onError={handleImageError(o.productTitle)} />
+              <div className="min-w-0 flex-grow-1">
+                {o.product ? (
+                  <Link to={`/product/${o.product.id}`} className="fw-semibold text-dark d-block text-truncate">{o.productTitle}</Link>
+                ) : (
+                  <span className="fw-semibold d-block text-truncate">{o.productTitle}</span>
+                )}
+                <small className="text-muted-cc d-block">
+                  Order #{o.id} · {formatDate(o.createdAt)} · {o.role === 'seller' ? 'Buyer' : 'Seller'}: {other?.name}
+                </small>
+                {o.meetingPoint && <small className="text-muted-cc"><i className="bi bi-geo-alt me-1" />{o.meetingPoint}</small>}
+              </div>
+              <strong className="d-none d-sm-block">{formatPrice(o.totalPrice)}</strong>
+              <span className={`badge text-bg-${statusTone[o.status] || 'secondary'}`}>{o.statusDisplay}</span>
+              {actionsFor(o).length > 0 && (
+                <div className="d-flex gap-1 w-100 justify-content-end">
+                  {actionsFor(o).map((a) => (
+                    <button key={a.action} type="button" className={`btn btn-sm ${a.cls}`} disabled={!!busy} onClick={() => run(o, a.action)}>
+                      {busy === `${o.id}-${a.action}` ? <span className="spinner-border spinner-border-sm" /> : a.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 function Panel({ title, action, children }) {
   return (
     <>
@@ -214,10 +295,11 @@ function EditProfile({ onDone }) {
   const toast = useToast();
   const [values, setValues] = useState({ fullName: user.fullName, college: user.college, studentId: user.studentId, phone: user.phone || '', bio: user.bio || '' });
   const [errors, setErrors] = useState({});
+  const [saving, setSaving] = useState(false);
 
   const set = (k) => (e) => setValues((v) => ({ ...v, [k]: e.target.value }));
 
-  const submit = (e) => {
+  const submit = async (e) => {
     e.preventDefault();
     const errs = {};
     if (values.fullName.trim().length < 3) errs.fullName = 'Name must be at least 3 characters.';
@@ -225,9 +307,17 @@ function EditProfile({ onDone }) {
     if (values.phone && !/^[6-9]\d{9}$/.test(values.phone)) errs.phone = 'Enter a valid 10-digit Indian mobile number.';
     setErrors(errs);
     if (Object.keys(errs).length) return;
-    updateProfile(values); // PATCH /api/auth/me/ once the backend is connected
-    toast('Profile updated');
-    onDone();
+    setSaving(true);
+    try {
+      await updateProfile(values); // PATCH /api/auth/profile/
+      toast('Profile updated');
+      onDone();
+    } catch (err) {
+      setErrors(getFieldErrors(err, { full_name: 'fullName', student_id: 'studentId' }));
+      toast(getErrorMessage(err, 'Could not update your profile.'), 'danger');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -237,13 +327,13 @@ function EditProfile({ onDone }) {
           <div className="col-md-6"><FormField id="ep-name" label="Full Name" value={values.fullName} onChange={set('fullName')} error={errors.fullName} /></div>
           <div className="col-md-6"><FormField id="ep-email" label="Student Email" value={user.email} disabled hint="Email can't be changed." /></div>
           <div className="col-md-6"><FormField id="ep-college" label="College" value={values.college} onChange={set('college')} error={errors.college} /></div>
-          <div className="col-md-6"><FormField id="ep-sid" label="Student ID" value={values.studentId} onChange={set('studentId')} /></div>
+          <div className="col-md-6"><FormField id="ep-sid" label="Student ID" value={values.studentId || ''} onChange={set('studentId')} error={errors.studentId} /></div>
           <div className="col-md-6"><FormField id="ep-phone" label="Phone (optional)" type="tel" placeholder="98XXXXXXXX" value={values.phone} onChange={set('phone')} error={errors.phone} /></div>
           <div className="col-12"><FormField id="ep-bio" as="textarea" rows={3} label="Bio" placeholder="2nd year CSE · Loves books & badminton" value={values.bio} onChange={set('bio')} /></div>
         </div>
         <div className="d-flex gap-2 justify-content-end">
           <button type="button" className="btn btn-outline-secondary" onClick={onDone}>Cancel</button>
-          <button type="submit" className="btn btn-primary">Save changes</button>
+          <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Saving…' : 'Save changes'}</button>
         </div>
       </form>
     </Panel>
